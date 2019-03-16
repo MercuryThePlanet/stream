@@ -54,6 +54,16 @@ func Generate(supplier Supplier) *Stream {
 	return Of(&generator{supplier})
 }
 
+func Iterate(seed op.T, m Mapper) *Stream {
+	supplier := func() op.T {
+		defer func() {
+			seed = m(seed)
+		}()
+		return seed
+	}
+	return Of(&generator{supplier})
+}
+
 func (s *Stream) Skip(num int) *Stream {
 	cur := s.pipeline
 	skipped := 0

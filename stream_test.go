@@ -70,6 +70,12 @@ func TestStream(t *testing.T) {
 		println(v.(int))
 	}
 
+	stream.Iterate(1, func(t op.T) op.T {
+		return t.(int) * 2
+	}).Limit(10).ForEach(func(t op.T) {
+		println(t.(int))
+	})
+
 }
 
 func makeRange(min, max int) []interface{} {
