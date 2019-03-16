@@ -155,6 +155,16 @@ func (s *Stream) Count() (count int) {
 	return
 }
 
+func (s *Stream) ToSlice() (array op.Ts) {
+	for s.spltr.TryAdvance(func(t op.T) {
+		s.pipeline(t, func(t op.T) {
+			array = append(array, t)
+		})
+	}) && !s.limitReached {
+	}
+	return
+}
+
 func (s *Stream) ForEach(c Consumer) {
 	for s.spltr.TryAdvance(func(t op.T) {
 		s.pipeline(t, c)

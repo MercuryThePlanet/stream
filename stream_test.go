@@ -60,14 +60,16 @@ func TestStream(t *testing.T) {
 		println(t.(int))
 	})
 
-	i := -1
+	i := 0
 	supplier := func() op.T {
 		i++
 		return i
 	}
-	stream.Generate(supplier).Skip(10).Limit(10).Skip(5).ForEach(func(t op.T) {
-		println(t.(int))
-	})
+	arr := stream.Generate(supplier).Skip(10).Limit(10).ToSlice()
+	for _, v := range arr {
+		println(v.(int))
+	}
+
 }
 
 func makeRange(min, max int) []interface{} {
