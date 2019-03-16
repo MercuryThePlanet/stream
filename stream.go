@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"fmt"
 	op "github.com/MercuryThePlanet/optional"
 	"runtime"
 )
@@ -10,70 +9,74 @@ var (
 	CORES = runtime.NumCPU()
 )
 
-func T() {
-	fmt.Println("vim-go")
-}
-
 type Spliterator interface {
-	TryAdvance(op.Consumer) bool
-	ForEachRemaining(op.Consumer)
+	TryAdvance(Consumer) bool
+	ForEachRemaining(Consumer)
 	TrySplit() Spliterator
-}
-
-type Array struct {
-	ts  op.Ts
-	idx int
-}
-
-func NewArray(ts op.Ts) *Array {
-	return &Array{ts, 0}
-}
-
-func (a *Array) TryAdvance(c op.Consumer) bool {
-	if a.idx >= len(a.ts) {
-		return false
-	}
-	c(a.ts[a.idx])
-	a.idx++
-	return true
-}
-
-func (a *Array) ForEachRemaining(c op.Consumer) {
-	for a.TryAdvance(c) {
-	}
-}
-
-func (a *Array) TrySplit() (s Spliterator) {
-	remain := len(a.ts) - a.idx
-	if remain > 1 {
-		var split int = (remain) / 2
-		s = &Array{ts: a.ts[split:], idx: 0}
-		a.ts = a.ts[:split]
-		return
-	}
-	return nil
 }
 
 type (
 	Mapper    func(op.T) op.T
+	Supplier  func() op.T
 	Consumer  func(op.T)
 	Predicate func(op.T) bool
 )
 
 type Stream struct {
-	pipeline func(op.T, Consumer)
-	spltr    Spliterator
+	pipeline     func(op.T, Consumer)
+	spltr        Spliterator
+	limitReached bool
+}
+type generator struct {
+	supplier Supplier
+}
+
+func (g *generator) TryAdvance(c Consumer) bool {
+	c(g.supplier())
+	return true
+}
+
+func (g *generator) ForEachRemaining(c Consumer) {
+	for {
+		c(g.supplier())
+	}
+}
+
+func (g *generator) TrySplit() Spliterator {
+	return nil
 }
 
 func Of(s Spliterator) *Stream {
-	return &Stream{func(t op.T, c Consumer) { c(t) }, s}
+	return &Stream{func(t op.T, c Consumer) { c(t) }, s, false}
+}
+
+func Generate(supplier Supplier) *Stream {
+	return Of(&generator{supplier})
+}
+
+func (s *Stream) Skip(num int) *Stream {
+	cur := s.pipeline
+	skipped := 0
+	s.pipeline = func(t op.T, c Consumer) {
+		cur(t, func(t op.T) {
+			if skipped >= num {
+				c(t)
+			} else {
+				skipped += 1
+			}
+		})
+	}
+	return s
 }
 
 func (s *Stream) Limit(size int) *Stream {
 	cur := s.pipeline
+	limit := 0
 	s.pipeline = func(t op.T, c Consumer) {
 		cur(t, func(t op.T) {
 			c(t)
+			limit += 1
+			s.limitReached = limit >= size
 		})
 	}
 	return s
@@ -107,7 +110,7 @@ func (s *Stream) AllMatch(p Predicate) (matches bool) {
 		s.pipeline(t, func(t op.T) {
 			matches = p(t)
 		})
-	}) {
+	}) && !s.limitReached {
 		if !matches {
 			break
 		}
@@ -124,7 +127,7 @@ func (s *Stream) AnyMatch(p Predicate) bool {
 			s.pipeline(t, func(t op.T) {
 				found = true
 			})
-		}) {
+		}) && !s.limitReached {
 			if found {
 				break
 			}
@@ -146,7 +149,7 @@ func (s *Stream) AnyMatch(p Predicate) bool {
 func (s *Stream) Count() (count int) {
 	for s.spltr.TryAdvance(func(t op.T) {
 		s.pipeline(t, func(t op.T) {})
-	}) {
+	}) && !s.limitReached {
 		count++
 	}
 	return
@@ -155,7 +158,7 @@ func (s *Stream) Count() (count int) {
 func (s *Stream) ForEach(c Consumer) {
 	for s.spltr.TryAdvance(func(t op.T) {
 		s.pipeline(t, c)
-	}) {
+	}) && !s.limitReached {
 	}
 }
 
@@ -169,7 +172,7 @@ func (s *Stream) FindAny() *op.Optional {
 				rv_chan <- op.Of(t)
 				found = true
 			})
-		}) {
+		}) && !s.limitReached {
 			if found {
 				break
 			}
