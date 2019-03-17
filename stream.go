@@ -16,7 +16,8 @@ type Spliterator interface {
 }
 
 type (
-	Mapper    func(op.T) op.T
+	BinaryOp  func(op.T, op.T) op.T
+	UnaryOp   func(op.T) op.T
 	Supplier  func() op.T
 	Consumer  func(op.T)
 	Predicate func(op.T) bool
@@ -54,7 +55,7 @@ func Generate(supplier Supplier) *Stream {
 	return Of(&generator{supplier})
 }
 
-func Iterate(seed op.T, m Mapper) *Stream {
+func Iterate(seed op.T, m UnaryOp) *Stream {
 	supplier := func() op.T {
 		defer func() {
 			seed = m(seed)
@@ -62,6 +63,18 @@ func Iterate(seed op.T, m Mapper) *Stream {
 		return seed
 	}
 	return Of(&generator{supplier})
+}
+
+func (s *Stream) Peek(peek_consumer Consumer) *Stream {
+	cur := s.pipeline
+	s.pipeline = func(t op.T, c Consumer) {
+		cur(t, func(t op.T) {
+			peek_consumer(t)
+			c(t)
+		})
+	}
+	return s
+
 }
 
 func (s *Stream) Skip(num int) *Stream {
@@ -104,7 +117,7 @@ func (s *Stream) Filter(p Predicate) *Stream {
 	return s
 }
 
-func (s *Stream) Map(m Mapper) *Stream {
+func (s *Stream) Map(m UnaryOp) *Stream {
 	cur := s.pipeline
 	s.pipeline = func(t op.T, c Consumer) {
 		cur(t, func(t op.T) {
@@ -112,6 +125,10 @@ func (s *Stream) Map(m Mapper) *Stream {
 		})
 	}
 	return s
+}
+
+func (s *Stream) NoneMatch(p Predicate) bool {
+	return !s.AnyMatch(p)
 }
 
 func (s *Stream) AllMatch(p Predicate) (matches bool) {
@@ -180,6 +197,27 @@ func (s *Stream) ForEach(c Consumer) {
 		s.pipeline(t, c)
 	}) && !s.limitReached {
 	}
+}
+
+func (s *Stream) Reduce(reducer BinaryOp) *op.Optional {
+	var rv op.T
+	set := false
+	for s.spltr.TryAdvance(func(t op.T) {
+		s.pipeline(t, func(inner_t op.T) {
+			rv = inner_t
+			set = true
+		})
+
+	}) && !s.limitReached && !set {
+	}
+	for s.spltr.TryAdvance(func(t op.T) {
+		s.pipeline(t, func(inner_t op.T) {
+			rv = reducer(rv, inner_t)
+		})
+	}) && !s.limitReached {
+	}
+
+	return op.OfNilable(rv)
 }
 
 func (s *Stream) FindAny() *op.Optional {

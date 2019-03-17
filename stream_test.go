@@ -72,10 +72,31 @@ func TestStream(t *testing.T) {
 
 	stream.Iterate(1, func(t op.T) op.T {
 		return t.(int) * 2
-	}).Limit(10).ForEach(func(t op.T) {
+	}).Limit(63).ForEach(func(t op.T) {
 		println(t.(int))
 	})
 
+	stream.Of(gen()).Peek(func(t op.T) {
+		print("Found one: ")
+		println(t.(int))
+	}).Filter(func(t op.T) bool {
+		return t.(int) > 5
+	}).Map(func(t op.T) op.T {
+		return t.(int) * 5
+	}).Peek(func(t op.T) {
+		print("Values: ")
+		println(t.(int))
+	}).Reduce(func(t1, t2 op.T) op.T {
+		return t1.(int) + t2.(int)
+	}).IfPresent(func(t op.T) {
+		print("Reduced value: ")
+		println(t.(int))
+	})
+	stream.Of(NewArray(op.Ts{"Hello", "World", "!"})).Reduce(func(t1, t2 op.T) op.T {
+		return t1.(string) + " " + t2.(string)
+	}).IfPresent(func(t op.T) {
+		println(t.(string))
+	})
 }
 
 func makeRange(min, max int) []interface{} {
