@@ -28,6 +28,7 @@ type Stream struct {
 	spltr        Spliterator
 	limitReached bool
 }
+
 type generator struct {
 	supplier Supplier
 }
@@ -53,6 +54,33 @@ func Of(s Spliterator) *Stream {
 
 func Generate(supplier Supplier) *Stream {
 	return Of(&generator{supplier})
+}
+
+type Collector interface {
+	Collect(Spliterator)
+}
+
+type GeneralCollector struct {
+	ts op.Ts
+}
+
+func NewGeneralCollector() *GeneralCollector {
+	return &GeneralCollector{}
+}
+
+func (c *GeneralCollector) Collect(spltr Spliterator) {
+	for spltr.TryAdvance(func(t op.T) {
+		c.ts = append(c.ts, t)
+	}) {
+	}
+}
+
+func (c *GeneralCollector) Get() op.Ts {
+	return c.ts
+}
+
+func (s *Stream) Collect(collector Collector) {
+	collector.Collect(s.spltr)
 }
 
 func Iterate(seed op.T, m UnaryOp) *Stream {

@@ -97,6 +97,13 @@ func TestStream(t *testing.T) {
 	}).IfPresent(func(t op.T) {
 		println(t.(string))
 	})
+
+	println("TESTING COLLECTOR")
+	collector := stream.NewGeneralCollector()
+	stream.Of(gen()).Collect(collector)
+	for _, t := range collector.Get() {
+		println(t.(int))
+	}
 }
 
 func makeRange(min, max int) []interface{} {
